@@ -7,4 +7,4 @@ pydantic
 gunicorn
 uvicorn[standard]
 passlib[bcrypt]
-
+jose[bcrypt]
