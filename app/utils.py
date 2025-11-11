@@ -29,9 +29,10 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
 def get_password_hash(password: str) -> str:
-    truncated_password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    hashed_pw = pwd_context.hash(truncated_password)
-    return hashed_pw
+    # Truncate to 72 bytes for bcrypt safety
+    password_bytes = password.encode("utf-8")[:72]
+    truncated_password = password_bytes.decode("utf-8", errors="ignore")
+    return pwd_context.hash(truncated_password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
