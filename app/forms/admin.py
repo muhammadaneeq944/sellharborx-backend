@@ -1,16 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Header
+# app/forms/admin.py
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
 from ..utils import db, verify_password, create_access_token, get_password_hash
 from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer
 import os
 
-# ⬅️ ADD THIS IMPORT (the missing one)
-from fastapi.security import OAuth2PasswordBearer
-from ..utils.oauth import oauth2_scheme   # <-- FIXED IMPORT (UPDATE PATH IF DIFFERENT)
-
+# ------------------------
+# JWT / OAuth2 setup
+# ------------------------
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login")
 
 admin_router = APIRouter(prefix="/admin")
 
@@ -40,7 +45,7 @@ class UserUpdateIn(BaseModel):
 # ------------------------
 async def get_current_admin(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
-        status_code=401,
+        status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials"
     )
     try:
@@ -56,9 +61,8 @@ async def get_current_admin(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return admin
 
-
 # ------------------------
-# Login
+# Admin login
 # ------------------------
 @admin_router.post("/login", response_model=Token)
 async def admin_login(form_data: AdminLoginIn):
@@ -68,47 +72,33 @@ async def admin_login(form_data: AdminLoginIn):
     access_token = create_access_token({"sub": admin["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
-
 # ------------------------
-# List users
+# Users CRUD
 # ------------------------
 @admin_router.get("/users", response_model=list[UserOut])
 async def list_users(current_admin: dict = Depends(get_current_admin)):
     users_cursor = db.users.find({}, {"password": 0})
     users = []
     async for u in users_cursor:
-        users.append({
-            "username": u.get("username"),
-            "email": u.get("email"),
-            "id": str(u.get("_id"))
-        })
+        users.append({"username": u.get("username"), "email": u.get("email"), "id": str(u.get("_id"))})
     return users
 
-
-# ------------------------
-# Delete user
-# ------------------------
 @admin_router.delete("/users/{user_id}", status_code=204)
 async def delete_user(user_id: str, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(user_id)
-    except Exception:
+    except:
         raise HTTPException(status_code=400, detail="Invalid user id")
-
     result = await db.users.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return Response(status_code=204)
 
-
-# ------------------------
-# Update user
-# ------------------------
 @admin_router.put("/users/{user_id}", response_model=UserOut)
 async def update_user(user_id: str, payload: UserUpdateIn, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(user_id)
-    except Exception:
+    except:
         raise HTTPException(status_code=400, detail="Invalid user id")
 
     update_doc = {}
@@ -129,15 +119,17 @@ async def update_user(user_id: str, payload: UserUpdateIn, current_admin: dict =
         raise HTTPException(status_code=404, detail="User not found")
 
     u = await db.users.find_one({"_id": oid}, {"password": 0})
-    return {
-        "username": u.get("username"),
-        "email": u.get("email"),
-        "id": str(u.get("_id"))
-    }
-
+    return {"username": u.get("username"), "email": u.get("email"), "id": str(u.get("_id"))}
 
 # ------------------------
-# List meetings
+# Admin info
+# ------------------------
+@admin_router.get("/me")
+async def admin_me(current_admin: dict = Depends(get_current_admin)):
+    return {"username": current_admin.get("username")}
+
+# ------------------------
+# Meetings CRUD
 # ------------------------
 @admin_router.get("/meetings")
 async def list_meetings(current_admin: dict = Depends(get_current_admin)):
@@ -154,30 +146,19 @@ async def list_meetings(current_admin: dict = Depends(get_current_admin)):
         })
     return meetings
 
-
-# ------------------------
-# Delete meeting
-# ------------------------
 @admin_router.delete("/meetings/{meeting_id}", status_code=204)
 async def delete_meeting(meeting_id: str, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(meeting_id)
-    except Exception:
+    except:
         raise HTTPException(status_code=400, detail="Invalid meeting id")
-
     result = await db.meetings.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Meeting not found")
     return Response(status_code=204)
 
-
-@admin_router.get("/me")
-async def admin_me(current_admin: dict = Depends(get_current_admin)):
-    return {"username": current_admin.get("username")}
-
-
 # ------------------------
-# List audits
+# Audits CRUD
 # ------------------------
 @admin_router.get("/audits")
 async def list_audits(current_admin: dict = Depends(get_current_admin)):
@@ -196,30 +177,25 @@ async def list_audits(current_admin: dict = Depends(get_current_admin)):
         })
     return audits
 
-
-# ------------------------
-# Delete audit
-# ------------------------
 @admin_router.delete("/audits/{audit_id}", status_code=204)
 async def delete_audit(audit_id: str, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(audit_id)
-    except Exception:
+    except:
         raise HTTPException(status_code=400, detail="Invalid audit id")
     result = await db.audits.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Audit not found")
     return Response(status_code=204)
 
-
 # ------------------------
-# List contacts
+# Contacts CRUD
 # ------------------------
 @admin_router.get("/contacts")
 async def list_contacts(current_admin: dict = Depends(get_current_admin)):
-    contacts_cursor = db.contacts.find({})
+    cursor = db.contacts.find({})
     contacts = []
-    async for c in contacts_cursor:
+    async for c in cursor:
         contacts.append({
             "id": str(c.get("_id")),
             "firstname": c.get("firstname"),
@@ -230,25 +206,19 @@ async def list_contacts(current_admin: dict = Depends(get_current_admin)):
         })
     return contacts
 
-
-# ------------------------
-# Delete contact
-# ------------------------
 @admin_router.delete("/contacts/{contact_id}", status_code=204)
 async def delete_contact(contact_id: str, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(contact_id)
     except:
         raise HTTPException(status_code=400, detail="Invalid contact id")
-
     result = await db.contacts.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
     return Response(status_code=204)
 
-
 # ------------------------
-# List newsletters
+# Newsletters CRUD
 # ------------------------
 @admin_router.get("/newsletters")
 async def list_newsletters(current_admin: dict = Depends(get_current_admin)):
@@ -262,10 +232,6 @@ async def list_newsletters(current_admin: dict = Depends(get_current_admin)):
         })
     return out
 
-
-# ------------------------
-# Delete newsletter
-# ------------------------
 @admin_router.delete("/newsletters/{nid}", status_code=204)
 async def delete_newsletter(nid: str, current_admin: dict = Depends(get_current_admin)):
     try:
@@ -277,9 +243,8 @@ async def delete_newsletter(nid: str, current_admin: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
 
-
 # ------------------------
-# List package requests
+# Packages CRUD
 # ------------------------
 @admin_router.get("/packages")
 async def list_packages(current_admin: dict = Depends(get_current_admin)):
@@ -300,17 +265,12 @@ async def list_packages(current_admin: dict = Depends(get_current_admin)):
         })
     return packages
 
-
-# ------------------------
-# Delete package request
-# ------------------------
 @admin_router.delete("/packages/{package_id}", status_code=204)
 async def delete_package(package_id: str, current_admin: dict = Depends(get_current_admin)):
     try:
         oid = ObjectId(package_id)
-    except Exception:
+    except:
         raise HTTPException(status_code=400, detail="Invalid package id")
-
     result = await db.packages.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Package not found")
