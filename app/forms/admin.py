@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Header
 from pydantic import BaseModel, EmailStr
 from bson import ObjectId
 from ..utils import db, verify_password, create_access_token, get_password_hash
-from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 import os
-from fastapi import Header, HTTPException, Depends
 
+# ⬅️ ADD THIS IMPORT (the missing one)
+from fastapi.security import OAuth2PasswordBearer
+from ..utils.oauth import oauth2_scheme   # <-- FIXED IMPORT (UPDATE PATH IF DIFFERENT)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
@@ -67,6 +68,7 @@ async def admin_login(form_data: AdminLoginIn):
     access_token = create_access_token({"sub": admin["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 # ------------------------
 # List users
 # ------------------------
@@ -82,6 +84,7 @@ async def list_users(current_admin: dict = Depends(get_current_admin)):
         })
     return users
 
+
 # ------------------------
 # Delete user
 # ------------------------
@@ -96,6 +99,7 @@ async def delete_user(user_id: str, current_admin: dict = Depends(get_current_ad
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return Response(status_code=204)
+
 
 # ------------------------
 # Update user
@@ -133,14 +137,10 @@ async def update_user(user_id: str, payload: UserUpdateIn, current_admin: dict =
 
 
 # ------------------------
-# List meetings (admin)
+# List meetings
 # ------------------------
 @admin_router.get("/meetings")
 async def list_meetings(current_admin: dict = Depends(get_current_admin)):
-    """
-    Return all meetings to admin.
-    Each meeting returned with id (string), name, email, agenda, date, created_at.
-    """
     meetings_cursor = db.meetings.find({})
     meetings = []
     async for m in meetings_cursor:
@@ -156,7 +156,7 @@ async def list_meetings(current_admin: dict = Depends(get_current_admin)):
 
 
 # ------------------------
-# Delete meeting?=
+# Delete meeting
 # ------------------------
 @admin_router.delete("/meetings/{meeting_id}", status_code=204)
 async def delete_meeting(meeting_id: str, current_admin: dict = Depends(get_current_admin)):
@@ -196,6 +196,7 @@ async def list_audits(current_admin: dict = Depends(get_current_admin)):
         })
     return audits
 
+
 # ------------------------
 # Delete audit
 # ------------------------
@@ -209,7 +210,6 @@ async def delete_audit(audit_id: str, current_admin: dict = Depends(get_current_
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Audit not found")
     return Response(status_code=204)
-
 
 
 # ------------------------
@@ -276,7 +276,6 @@ async def delete_newsletter(nid: str, current_admin: dict = Depends(get_current_
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return Response(status_code=204)
-
 
 
 # ------------------------
