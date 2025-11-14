@@ -37,24 +37,23 @@ class UserUpdateIn(BaseModel):
 # ------------------------
 # Auth helper
 # ------------------------
-from fastapi import Header, HTTPException, Depends
-
-async def get_current_admin(authorization: str = Header(None)):
-    if authorization is None or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = authorization.split(" ")[1]
-
-    # Verify the JWT
+async def get_current_admin(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials"
+    )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise credentials_exception
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise credentials_exception
 
-    return username
+    admin = await db.admins.find_one({"username": username})
+    if not admin:
+        raise credentials_exception
+    return admin
 
 
 # ------------------------
