@@ -6,12 +6,12 @@ import asyncio
 
 from ..utils import db, send_email, ADMIN_EMAIL
 
-router = APIRouter()  # top-level route: /newsletter
+ # top-level route: /newsletter
 
 class NewsletterIn(BaseModel):
     email: EmailStr
-
-@router.post("/newsletter", status_code=status.HTTP_201_CREATED)
+router = APIRouter(prefix="/newsletter") 
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def subscribe_newsletter(payload: NewsletterIn):
     """
     Save newsletter subscription, block duplicates, send confirmation to user and notify admin.
