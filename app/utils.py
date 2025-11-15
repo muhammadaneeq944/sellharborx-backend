@@ -115,73 +115,83 @@
 #     await asyncio.to_thread(_send_email_sync, subject, html_content, recipient, text_fallback)
 
 import os
+import asyncio
+import hashlib
 from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
-from dotenv import load_dotenv
 from jose import jwt
+from dotenv import load_dotenv
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
-# ----------------- LOAD ENVIRONMENT VARIABLES -----------------
+# ------------------------
+# Load environment variables
+# ------------------------
 load_dotenv()
+
+# ------------------------
+# Database Setup
+# ------------------------
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+DB_NAME = os.getenv("DB_NAME", "sellharborx")
+
+client = AsyncIOMotorClient(MONGO_URI)
+db = client[DB_NAME]
+
+def get_collection(name: str):
+    return db[name]
+
+# ------------------------
+# Security / Authentication
+# ------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 
-# ----------------- DATABASE -----------------
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-client: AsyncIOMotorClient = AsyncIOMotorClient(MONGO_URI)
-db = client.get_database("sellharborx")  # Explicit DB reference
-
-def get_collection(name: str):
-    """Helper to get a MongoDB collection"""
-    return db[name]
-
-# ----------------- PASSWORD HASHING -----------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _pre_hash(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    pre = _pre_hash(password)
+    return pwd_context.hash(pre)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    pre = _pre_hash(plain_password)
+    return pwd_context.verify(pre, hashed_password)
 
-# ----------------- JWT TOKEN -----------------
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# ----------------- EMAIL CONFIG -----------------
-MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
+# ------------------------
+# Email Utility
+# ------------------------
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
 MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
 MAIL_SERVER = os.getenv("MAIL_HOST", "smtp.gmail.com")
+MAIL_TLS = os.getenv("MAIL_TLS", "True").lower() in ("true", "1", "yes")
+MAIL_SSL = os.getenv("MAIL_SSL", "False").lower() in ("true", "1", "yes")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_FROM)
 
-# Use only MAIL_STARTTLS and MAIL_SSL_TLS, remove MAIL_TLS/MAIL_SSL
 conf = ConnectionConfig(
     MAIL_USERNAME=MAIL_USERNAME,
     MAIL_PASSWORD=MAIL_PASSWORD,
     MAIL_FROM=MAIL_FROM,
     MAIL_PORT=MAIL_PORT,
     MAIL_SERVER=MAIL_SERVER,
-    MAIL_STARTTLS=True,   
-    MAIL_SSL_TLS=False,   
+    MAIL_STARTTLS=MAIL_TLS,
+    MAIL_SSL_TLS=MAIL_SSL,
     VALIDATE_CERTS=True
 )
 
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_FROM)
-
 async def send_email(subject: str, html_content: str, email_to: str, text_content: str = ""):
-    """
-    Send an email using FastAPI-Mail
-    """
     message = MessageSchema(
         subject=subject,
         recipients=[email_to],
@@ -190,10 +200,3 @@ async def send_email(subject: str, html_content: str, email_to: str, text_conten
     )
     fm = FastMail(conf)
     await fm.send_message(message)
-
-
-
-
-
-
-
