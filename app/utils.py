@@ -116,7 +116,6 @@
 
 
 
-
 # app/utils.py
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -124,19 +123,19 @@ from passlib.context import CryptContext
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from dotenv import load_dotenv
 
-# Load .env variables if running locally
+# Load environment variables
 load_dotenv()
 
-# -------------------------
-# Database
-# -------------------------
+# ----------------- DATABASE -----------------
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-client = AsyncIOMotorClient(MONGO_URI)
-db = client["sellharborx"]  # replace with your database name
+client: AsyncIOMotorClient = AsyncIOMotorClient(MONGO_URI)
+db = client.get_database("sellharborx")  # Explicit DB reference
 
-# -------------------------
-# Password Hashing
-# -------------------------
+def get_collection(name: str):
+    """Helper to get a MongoDB collection"""
+    return db[name]
+
+# ----------------- PASSWORD HASHING -----------------
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_password_hash(password: str) -> str:
@@ -145,11 +144,9 @@ def get_password_hash(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-# -------------------------
-# Email Configuration
-# -------------------------
-MAIL_USERNAME = os.getenv("MAIL_USERNAME")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+# ----------------- EMAIL CONFIG -----------------
+MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
 MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
 MAIL_SERVER = os.getenv("MAIL_HOST", "smtp.gmail.com")
@@ -168,14 +165,11 @@ conf = ConnectionConfig(
     VALIDATE_CERTS=True,
 )
 
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")  # set this in Render env
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_FROM)
 
-# -------------------------
-# Send Email Function
-# -------------------------
 async def send_email(subject: str, html_content: str, email_to: str, text_content: str = ""):
     """
-    Send an email asynchronously.
+    Send an email using FastAPI-Mail
     """
     message = MessageSchema(
         subject=subject,
@@ -185,6 +179,8 @@ async def send_email(subject: str, html_content: str, email_to: str, text_conten
     )
     fm = FastMail(conf)
     await fm.send_message(message)
+
+
 
 
 
