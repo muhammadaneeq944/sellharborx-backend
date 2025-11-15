@@ -51,7 +51,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 import asyncio
 
-from app.utils import db, get_password_hash, send_email, ADMIN_EMAIL
+from ..utils import db, get_password_hash, send_email, ADMIN_EMAIL
 
 
 signup_router = APIRouter(prefix="/signup", tags=["Signup"])
