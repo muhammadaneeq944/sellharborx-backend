@@ -117,55 +117,74 @@
 
 
 
-# backend/app/utils.py
-import asyncio
+# app/utils.py
 import os
-from email.message import EmailMessage
-import smtplib
+from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load .env variables if running locally
 load_dotenv()
 
+# -------------------------
+# Database
+# -------------------------
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+client = AsyncIOMotorClient(MONGO_URI)
+db = client["sellharborx"]  # replace with your database name
+
+# -------------------------
+# Password Hashing
+# -------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+# -------------------------
+# Email Configuration
+# -------------------------
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
-MAIL_FROM = os.getenv("MAIL_FROM") or MAIL_USERNAME
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL") or MAIL_USERNAME
-MAIL_HOST = os.getenv("MAIL_HOST", "smtp.gmail.com")
-MAIL_PORT = int(os.getenv("MAIL_PORT", 587))  # default TLS port
+MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
+MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
+MAIL_SERVER = os.getenv("MAIL_HOST", "smtp.gmail.com")
+MAIL_TLS = True
+MAIL_SSL = False
 
-def _send_email_sync(subject: str, html_content: str, recipient: str, text_fallback: str = None):
+conf = ConnectionConfig(
+    MAIL_USERNAME=MAIL_USERNAME,
+    MAIL_PASSWORD=MAIL_PASSWORD,
+    MAIL_FROM=MAIL_FROM,
+    MAIL_PORT=MAIL_PORT,
+    MAIL_SERVER=MAIL_SERVER,
+    MAIL_TLS=MAIL_TLS,
+    MAIL_SSL=MAIL_SSL,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True,
+)
+
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")  # set this in Render env
+
+# -------------------------
+# Send Email Function
+# -------------------------
+async def send_email(subject: str, html_content: str, email_to: str, text_content: str = ""):
     """
-    Send an email synchronously using SMTP.
+    Send an email asynchronously.
     """
-    if not MAIL_USERNAME or not MAIL_PASSWORD:
-        print("⚠️ Email credentials not set.")
-        return
+    message = MessageSchema(
+        subject=subject,
+        recipients=[email_to],
+        body=html_content if html_content else text_content,
+        subtype="html"
+    )
+    fm = FastMail(conf)
+    await fm.send_message(message)
 
-    try:
-        msg = EmailMessage()
-        msg["From"] = MAIL_FROM
-        msg["To"] = recipient
-        msg["Subject"] = subject
-
-        if text_fallback:
-            msg.set_content(text_fallback)
-        msg.add_alternative(html_content, subtype="html")
-
-        with smtplib.SMTP(MAIL_HOST, MAIL_PORT) as server:
-            server.starttls()
-            server.login(MAIL_USERNAME, MAIL_PASSWORD)
-            server.send_message(msg)
-
-        print(f"✅ Email sent to {recipient}")
-
-    except Exception as e:
-        print(f"❌ Failed to send email to {recipient}: {e}")
-
-async def send_email(subject: str, html_content: str, recipient: str, text_fallback: str = None):
-    """
-    Async wrapper to send email in background.
-    """
-    await asyncio.to_thread(_send_email_sync, subject, html_content, recipient, text_fallback)
 
 
