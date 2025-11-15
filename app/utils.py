@@ -121,6 +121,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from dotenv import load_dotenv
+from fastapi_mail import ConnectionConfig
 
 # Load environment variables
 load_dotenv()
@@ -158,12 +159,10 @@ conf = ConnectionConfig(
     MAIL_FROM=MAIL_FROM,
     MAIL_PORT=MAIL_PORT,
     MAIL_SERVER=MAIL_SERVER,
-    MAIL_TLS=MAIL_TLS,
-    MAIL_SSL=MAIL_SSL,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True,
+    MAIL_STARTTLS=True,   
+    MAIL_SSL_TLS=False,   
+    VALIDATE_CERTS=True
 )
-
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_FROM)
 
 async def send_email(subject: str, html_content: str, email_to: str, text_content: str = ""):
