@@ -115,72 +115,31 @@
 #     await asyncio.to_thread(_send_email_sync, subject, html_content, recipient, text_fallback)
 
 
+
+
 # backend/app/utils.py
 import asyncio
-from datetime import datetime, timedelta
-from motor.motor_asyncio import AsyncIOMotorClient
-from passlib.context import CryptContext
-from jose import jwt
 import os
 from email.message import EmailMessage
 import smtplib
-import ssl
-import hashlib
 from dotenv import load_dotenv
 
-# ------------------------
 # Load environment variables
-# ------------------------
 load_dotenv()
 
-# ------------------------
-# Database Setup
-# ------------------------
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("DB_NAME", "sellharborx")
-
-client = AsyncIOMotorClient(MONGO_URI)
-db = client[DB_NAME]
-
-# ------------------------
-# Security / Authentication
-# ------------------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
-
-def _pre_hash(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-def get_password_hash(password: str) -> str:
-    pre = _pre_hash(password)
-    return pwd_context.hash(pre)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    pre = _pre_hash(plain_password)
-    return pwd_context.verify(pre, hashed_password)
-
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-# ------------------------
-# Email Utility
-# ------------------------
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")  # Use App Password for Gmail
-MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_USERNAME)
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+MAIL_FROM = os.getenv("MAIL_FROM") or MAIL_USERNAME
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL") or MAIL_USERNAME
+MAIL_HOST = os.getenv("MAIL_HOST", "smtp.gmail.com")
+MAIL_PORT = int(os.getenv("MAIL_PORT", 587))  # default TLS port
 
 def _send_email_sync(subject: str, html_content: str, recipient: str, text_fallback: str = None):
     """
-    Send email synchronously via Gmail SMTP (TLS 587)
+    Send an email synchronously using SMTP.
     """
     if not MAIL_USERNAME or not MAIL_PASSWORD:
-        print("⚠️ Email credentials not configured!")
+        print("⚠️ Email credentials not set.")
         return
 
     try:
@@ -193,27 +152,19 @@ def _send_email_sync(subject: str, html_content: str, recipient: str, text_fallb
             msg.set_content(text_fallback)
         msg.add_alternative(html_content, subtype="html")
 
-        # Gmail SMTP with TLS (port 587)
-        context = ssl.create_default_context()
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.ehlo()
+        with smtplib.SMTP(MAIL_HOST, MAIL_PORT) as server:
+            server.starttls()
             server.login(MAIL_USERNAME, MAIL_PASSWORD)
             server.send_message(msg)
 
-        print(f"✅ Email sent successfully to {recipient}")
+        print(f"✅ Email sent to {recipient}")
 
-    except smtplib.SMTPAuthenticationError:
-        print("❌ Authentication error: Check MAIL_USERNAME and MAIL_PASSWORD (App Password).")
-    except smtplib.SMTPConnectError:
-        print("❌ SMTP connection error: Port 587 blocked or server unreachable.")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Failed to send email to {recipient}: {e}")
 
 async def send_email(subject: str, html_content: str, recipient: str, text_fallback: str = None):
     """
-    Async wrapper to send email in background thread
+    Async wrapper to send email in background.
     """
     await asyncio.to_thread(_send_email_sync, subject, html_content, recipient, text_fallback)
 
