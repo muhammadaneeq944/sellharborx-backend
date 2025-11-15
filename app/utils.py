@@ -150,8 +150,8 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
 MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
 MAIL_SERVER = os.getenv("MAIL_HOST", "smtp.gmail.com")
-MAIL_TLS = True
-MAIL_SSL = False
+MAIL_STARTTLS = True
+MAIL_SSL_TLS = False
 
 conf = ConnectionConfig(
     MAIL_USERNAME=MAIL_USERNAME,
