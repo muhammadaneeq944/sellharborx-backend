@@ -1,58 +1,17 @@
-# from fastapi import APIRouter, HTTPException
-# from pydantic import BaseModel, EmailStr
-# from ..utils import db, get_password_hash, send_email, ADMIN_EMAIL
-# from datetime import datetime
-# import asyncio
-
-# signup_router = APIRouter()
-
-# class SignupIn(BaseModel):
-#     username: str
-#     email: EmailStr
-#     password: str
-
-# @signup_router.post("/signup")
-# async def signup(user: SignupIn):
-#     existing = await db.users.find_one({"email": user.email})
-#     if existing:
-#         raise HTTPException(status_code=400, detail="Email already registered")
-#     if len(user.password.encode("utf-8")) > 72:
-#         raise HTTPException(status_code=400, detail="Password too long")
-    
-#     hashed_pw = get_password_hash(user.password)
-#     result = await db.users.insert_one({
-#         "username": user.username,
-#         "email": user.email,
-#         "password": hashed_pw,
-#         "created_at": datetime.utcnow()
-#     })
-
-#     html_user = f"<h2>Welcome, {user.username}</h2>"
-#     text_user = f"Welcome {user.username}!"
-
-#     html_admin = f"<p>New user: {user.username} - {user.email}</p>"
-#     text_admin = f"New user registered: {user.username} - {user.email}"
-
-#     asyncio.create_task(send_email("Welcome!", html_user, user.email, text_user))
-#     asyncio.create_task(send_email("New user", html_admin, ADMIN_EMAIL, text_admin))
-
-#     return {"message": "Signup successful", "user_id": str(result.inserted_id)}
-
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from ..utils import db, get_password_hash, send_email, ADMIN_EMAIL
 from datetime import datetime
 import asyncio
 
-signup_router = APIRouter()
+signup_router = APIRouter(prefix="/signup")
 
 class SignupIn(BaseModel):
     username: str
     email: EmailStr
     password: str
 
-@signup_router.post("/signup")
+@signup_router.post("", tags=["Signup"])
 async def signup(user: SignupIn):
     existing = await db.users.find_one({"email": user.email})
     if existing:
