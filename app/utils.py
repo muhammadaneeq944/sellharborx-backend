@@ -115,17 +115,14 @@
 
 # app/utils.py
 import os
-import asyncio
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
-from email.message import EmailMessage
-import requests
-from dotenv import load_dotenv
-
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from jose import jwt
+import httpx
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -174,10 +171,19 @@ MAIL_FROM = os.getenv("MAIL_FROM")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", MAIL_FROM)
 
 async def send_email(subject: str, html_content: str, recipient: str, text_fallback: Optional[str] = " "):
+    """
+    Send email via SendGrid API.
+    Uses async httpx client to avoid blocking the event loop.
+    MAIL_FROM must be verified in SendGrid.
+    """
     if not SENDGRID_API_KEY:
         print("⚠️ SendGrid API Key missing. Email skipped.")
         return False
-    
+
+    if not MAIL_FROM:
+        print("⚠️ MAIL_FROM email missing. Email skipped.")
+        return False
+
     url = "https://api.sendgrid.com/v3/mail/send"
     headers = {
         "Authorization": f"Bearer {SENDGRID_API_KEY}",
@@ -195,10 +201,14 @@ async def send_email(subject: str, html_content: str, recipient: str, text_fallb
     }
 
     try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        print(f"📨 Email sent successfully to {recipient}")
-        return True
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            print(f"📨 Email sent successfully to {recipient}")
+            return True
+    except httpx.HTTPStatusError as e:
+        print(f"❌ Email sending failed → {e.response.status_code}: {e.response.text}")
+        return False
     except Exception as e:
         print(f"❌ Email sending failed → {e}")
         return False
