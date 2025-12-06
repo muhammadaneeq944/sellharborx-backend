@@ -1,12 +1,108 @@
+# # backend/app/forms/audit.py
+# from fastapi import APIRouter, HTTPException
+# from pydantic import BaseModel, EmailStr
+# from datetime import datetime, timedelta
+# import asyncio
+
+# from ..utils import db, send_email, ADMIN_EMAIL
+
+# router = APIRouter()  # no prefix; main.py will include at top-level
+
+# class AuditIn(BaseModel):
+#     firstname: str
+#     lastname: str
+#     email: EmailStr
+#     brandname: str
+#     producturl: str
+#     message: str
+
+# @router.post("/audit")
+# async def submit_audit(payload: AuditIn):
+#     """
+#     Save audit request to DB (collection: audits), send confirmation emails to user + admin.
+#     Prevent duplicate (same email + producturl) within 24 hours.
+#     """
+#     # Basic duplicate prevention: same email + producturl within 24 hours
+#     cutoff = datetime.utcnow() - timedelta(hours=24)
+#     dup = await db.audits.find_one({
+#         "email": payload.email,
+#         "producturl": payload.producturl,
+#         "created_at": { "$gte": cutoff }
+#     })
+#     if dup:
+#         raise HTTPException(status_code=409, detail="An audit request for this product was received recently. Please wait before requesting again.")
+
+#     doc = {
+#         "firstname": payload.firstname,
+#         "lastname": payload.lastname,
+#         "email": payload.email,
+#         "brandname": payload.brandname,
+#         "producturl": payload.producturl,
+#         "message": payload.message,
+#         "created_at": datetime.utcnow()
+#     }
+
+#     result = await db.audits.insert_one(doc)
+
+#     # Build user HTML email
+#     html_user = f"""
+#     <html>
+#       <body style="font-family:Arial,Helvetica,sans-serif;color:#222;">
+#         <h2>Thanks {payload.firstname}! Your Free Amazon Audit Request is Confirmed</h2>
+#         <p>Hi {payload.firstname},</p>
+#         <p>Thank you for requesting a Free Amazon Account Audit from Sellharborx. Our experts are reviewing your store and analyzing opportunities to improve performance, ranking, and conversions.</p>
+#         <p><strong>Product URL:</strong> {payload.producturl}</p>
+#         <p>You will receive your detailed audit report within 24 to 48 hours. <br>If you have any quick questions, feel free to reply to this email. </p>
+#         <p style="margin-top:18px;">Regards<br/>SellHarborX Team</p>
+#       </body>
+#     </html>
+#     """
+#     text_user = f"Thanks {payload.firstname}, we received your audit request for {payload.brandname} ({payload.producturl}). Our team will contact you soon."
+
+#     # Build admin notification
+#     html_admin = f"""
+#     <html>
+#       <body style="font-family:Arial,Helvetica,sans-serif;color:#222;">
+#         <h3>New Audit Request</h3>
+#         <ul>
+#           <li><strong>Name:</strong> {payload.firstname} {payload.lastname}</li>
+#           <li><strong>Email:</strong> {payload.email}</li>
+#           <li><strong>Brand:</strong> {payload.brandname}</li>
+#           <li><strong>Product URL:</strong> {payload.producturl}</li>
+#           <li><strong>Message:</strong> {payload.message}</li>
+#           <li><strong>Time (UTC):</strong> {datetime.utcnow().isoformat()}</li>
+#         </ul>
+#       </body>
+#     </html>
+#     """
+#     text_admin = f"New audit request: {payload.firstname} {payload.lastname} <{payload.email}> - {payload.brandname} - {payload.producturl}"
+
+#     # schedule email sending in background thread(s)
+#     try:
+#         asyncio.create_task(send_email("SellHarbor X — Audit request received", html_user, payload.email, text_user))
+#         asyncio.create_task(send_email("New audit request - SellHarbor X", html_admin, ADMIN_EMAIL, text_admin))
+#     except Exception as e:
+#         # don't break flow if email scheduling fails, just log
+#         print("Failed to schedule audit emails:", e)
+
+#     return {"message": "Audit request received", "id": str(result.inserted_id)}
+
+
+
+
+
+
 # backend/app/forms/audit.py
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 import asyncio
 
-from ..utils import db, send_email, ADMIN_EMAIL
+from ..database import db
+from ..utils import send_email, ADMIN_EMAIL
 
-router = APIRouter()  # no prefix; main.py will include at top-level
+router = APIRouter()
 
 class AuditIn(BaseModel):
     firstname: str
@@ -16,22 +112,30 @@ class AuditIn(BaseModel):
     producturl: str
     message: str
 
-@router.post("/audit")
+
+@router.post("/audit", status_code=status.HTTP_201_CREATED)
 async def submit_audit(payload: AuditIn):
     """
-    Save audit request to DB (collection: audits), send confirmation emails to user + admin.
-    Prevent duplicate (same email + producturl) within 24 hours.
+    Save audit request to DB and send confirmation emails 
+    to the user and admin. Prevent duplicate requests 
+    within 24 hours (same email + producturl).
     """
-    # Basic duplicate prevention: same email + producturl within 24 hours
+
+    # ▼ Duplicate protection (24 hours)
     cutoff = datetime.utcnow() - timedelta(hours=24)
-    dup = await db.audits.find_one({
+    duplicate = await db.audits.find_one({
         "email": payload.email,
         "producturl": payload.producturl,
-        "created_at": { "$gte": cutoff }
+        "created_at": {"$gte": cutoff}
     })
-    if dup:
-        raise HTTPException(status_code=409, detail="An audit request for this product was received recently. Please wait before requesting again.")
 
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail="An audit request for this product was received recently. Please wait before requesting again."
+        )
+
+    # ▼ Save new audit request
     doc = {
         "firstname": payload.firstname,
         "lastname": payload.lastname,
@@ -44,22 +148,32 @@ async def submit_audit(payload: AuditIn):
 
     result = await db.audits.insert_one(doc)
 
-    # Build user HTML email
+    # ▼ User email
     html_user = f"""
     <html>
       <body style="font-family:Arial,Helvetica,sans-serif;color:#222;">
         <h2>Thanks {payload.firstname}! Your Free Amazon Audit Request is Confirmed</h2>
         <p>Hi {payload.firstname},</p>
-        <p>Thank you for requesting a Free Amazon Account Audit from Sellharborx. Our experts are reviewing your store and analyzing opportunities to improve performance, ranking, and conversions.</p>
+        <p>Thank you for requesting a Free Amazon Account Audit from SellHarborX. 
+        Our experts are reviewing your store and identifying opportunities to 
+        improve performance, ranking, and conversions.</p>
+
         <p><strong>Product URL:</strong> {payload.producturl}</p>
-        <p>You will receive your detailed audit report within 24 to 48 hours. <br>If you have any quick questions, feel free to reply to this email. </p>
-        <p style="margin-top:18px;">Regards<br/>SellHarborX Team</p>
+
+        <p>You will receive your detailed audit report within 24–48 hours.  
+        If you have any questions, feel free to reply to this email.</p>
+
+        <p style="margin-top:18px;">Regards,<br/>SellHarborX Team</p>
       </body>
     </html>
     """
-    text_user = f"Thanks {payload.firstname}, we received your audit request for {payload.brandname} ({payload.producturl}). Our team will contact you soon."
 
-    # Build admin notification
+    text_user = (
+        f"Thanks {payload.firstname}, your audit request for {payload.brandname} "
+        f"({payload.producturl}) has been received. Our team will contact you soon."
+    )
+
+    # ▼ Admin email
     html_admin = f"""
     <html>
       <body style="font-family:Arial,Helvetica,sans-serif;color:#222;">
@@ -75,14 +189,34 @@ async def submit_audit(payload: AuditIn):
       </body>
     </html>
     """
-    text_admin = f"New audit request: {payload.firstname} {payload.lastname} <{payload.email}> - {payload.brandname} - {payload.producturl}"
 
-    # schedule email sending in background thread(s)
+    text_admin = (
+        f"New audit request from {payload.firstname} {payload.lastname} "
+        f"<{payload.email}> — {payload.brandname} — {payload.producturl}"
+    )
+
+    # ▼ Send emails (async non-blocking)
     try:
-        asyncio.create_task(send_email("SellHarbor X — Audit request received", html_user, payload.email, text_user))
-        asyncio.create_task(send_email("New audit request - SellHarbor X", html_admin, ADMIN_EMAIL, text_admin))
+        asyncio.create_task(
+            send_email(
+                "SellHarborX — Audit Request Received", 
+                html_user, 
+                payload.email, 
+                text_user
+            )
+        )
+        asyncio.create_task(
+            send_email(
+                "New Audit Request — SellHarborX",
+                html_admin,
+                ADMIN_EMAIL,
+                text_admin
+            )
+        )
     except Exception as e:
-        # don't break flow if email scheduling fails, just log
         print("Failed to schedule audit emails:", e)
 
-    return {"message": "Audit request received", "id": str(result.inserted_id)}
+    return {
+        "message": "Audit request received",
+        "id": str(result.inserted_id)
+    }
